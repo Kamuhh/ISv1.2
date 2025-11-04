@@ -55,6 +55,9 @@ class KCRoutes
             //'send_bill_to_patient'    =>   ['method' => 'get', 'action' => 'KCPatientEncounterController@sendBillToPatient'],
             'encounter_extra_clinical_detail_fields'    =>   ['method' => 'get', 'action' => 'KCPatientEncounterController@encounterExtraClinicalDetailFields'],
             'get_encounter_print'           => ['method' => 'get', 'action' => 'KCPatientEncounterController@getEncounterPrint'],
+            'get_encounter_summary'         => ['method' => 'get', 'action' => 'KCPatientEncounterController@getEncounterSummary'],
+            'get_encounter_summary_pdf'     => ['method' => 'get', 'action' => 'KCPatientEncounterController@getEncounterSummaryPdf'],
+            'send_encounter_summary'        => ['method' => 'post', 'action' => 'KCPatientEncounterController@sendEncounterSummary'],
 
             // Medical records routes starts here...
             'prescription_list'          => ['method' => 'get', 'action' => 'KCPatientPrescriptionController@index'],
