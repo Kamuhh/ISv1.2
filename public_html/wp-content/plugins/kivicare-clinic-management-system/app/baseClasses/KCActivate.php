@@ -1002,7 +1002,23 @@ class KCActivate extends KCBase {
         wp_register_script( 'google-platform', 'https://accounts.google.com/gsi/client', array(), KIVI_CARE_VERSION,true );	
 		wp_enqueue_script( 'kc_js_bundle', $path . 'assets/js/app.min.js', ['jquery','media-models','google-platform'], KIVI_CARE_VERSION,true);
         wp_enqueue_script( 'kc_custom', $path . 'assets/js/custom.js', ['jquery', 'media-models'], KIVI_CARE_VERSION,true );
-        wp_localize_script( 'kc_custom', 'kc_custom_request_data', [
+		wp_enqueue_script( 'kc_encounter_summary', $path . 'assets/js/encounter-summary.js', ['kc_js_bundle'], KIVI_CARE_VERSION, true );
+		wp_localize_script(
+			'kc_encounter_summary',
+			'kcEncounterSummaryLabels',
+			[
+				'modalTitle' => esc_html__( 'Resumen de atención / Care Summary', 'kc-lang' ),
+				'emailButton' => esc_html__( 'Enviar por e-mail / Send by email', 'kc-lang' ),
+				'pdfButton' => esc_html__( 'Ver PDF / View PDF', 'kc-lang' ),
+				'closeButton' => esc_html__( 'Cerrar / Close', 'kc-lang' ),
+				'loading' => esc_html__( 'Cargando información / Loading information', 'kc-lang' ),
+				'noData' => esc_html__( 'No hay datos disponibles / No data available', 'kc-lang' ),
+				'emailSuccess' => esc_html__( 'Resumen enviado correctamente / Summary sent successfully', 'kc-lang' ),
+				'emailError' => esc_html__( 'No se pudo enviar el resumen / Unable to send the summary', 'kc-lang' ),
+				'pdfError' => esc_html__( 'No se pudo generar el PDF / Unable to generate the PDF', 'kc-lang' ),
+			]
+		);
+		wp_localize_script( 'kc_custom', 'kc_custom_request_data', [
                 'support_mime_type' => get_allowed_mime_types()
         ]);
         //pass date to app.min.js file by localize
