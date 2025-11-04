@@ -934,15 +934,464 @@ class KCPatientEncounterController extends KCBase
 	}
 
 	public function getEncounterPrint()
-	{
-		$request_data = $this->request->getInputs();
-		if (!((new KCPatientEncounter())->encounterPermissionUserWise($request_data['encounter_id']))) {
-			wp_send_json(kcUnauthorizeAccessResponse(403));
-		}
-		$response = apply_filters('kcpro_get_encounter_print', [
-			'encounter_id' => (int) $request_data['encounter_id'],
-			'clinic_default_logo' => KIVI_CARE_DIR_URI . 'assets/images/kc-demo-img.png',
-		]);
-		wp_send_json($response);
-	}
+        {
+                $request_data = $this->request->getInputs();
+                if (!((new KCPatientEncounter())->encounterPermissionUserWise($request_data['encounter_id']))) {
+                        wp_send_json(kcUnauthorizeAccessResponse(403));
+                }
+                $response = apply_filters('kcpro_get_encounter_print', [
+                        'encounter_id' => (int) $request_data['encounter_id'],
+                        'clinic_default_logo' => KIVI_CARE_DIR_URI . 'assets/images/kc-demo-img.png',
+                ]);
+                wp_send_json($response);
+        }
+
+        public function getEncounterSummary()
+        {
+                $request_data = $this->request->getInputs();
+
+                try {
+                        if (empty($request_data['id'])) {
+                                wp_send_json(kcThrowExceptionResponse(esc_html__('Encounter id not found', 'kc-lang'), 400));
+                        }
+
+                        $encounter_id = (int) $request_data['id'];
+
+                        if (!((new KCPatientEncounter())->encounterPermissionUserWise($encounter_id))) {
+                                wp_send_json(kcUnauthorizeAccessResponse(403));
+                        }
+
+                        $summary = $this->buildEncounterSummaryData($encounter_id);
+
+                        if (empty($summary)) {
+                                wp_send_json(kcThrowExceptionResponse(esc_html__('Encounter summary not available', 'kc-lang'), 404));
+                        }
+
+                        wp_send_json([
+                                'status' => true,
+                                'message' => esc_html__('Encounter summary', 'kc-lang'),
+                                'data' => $summary,
+                        ]);
+                } catch (Exception $e) {
+                        $code = $e->getCode();
+                        $message = $e->getMessage();
+
+                        header("Status: $code $message");
+
+                        wp_send_json([
+                                'status' => false,
+                                'message' => $message,
+                        ]);
+                }
+        }
+
+        public function getEncounterSummaryPdf()
+        {
+                $request_data = $this->request->getInputs();
+
+                try {
+                        if (empty($request_data['id'])) {
+                                wp_send_json(kcThrowExceptionResponse(esc_html__('Encounter id not found', 'kc-lang'), 400));
+                        }
+
+                        $encounter_id = (int) $request_data['id'];
+
+                        if (!((new KCPatientEncounter())->encounterPermissionUserWise($encounter_id))) {
+                                wp_send_json(kcUnauthorizeAccessResponse(403));
+                        }
+
+                        $html = $this->generateEncounterSummaryHtml($encounter_id);
+
+                        if (empty($html)) {
+                                wp_send_json(kcThrowExceptionResponse(esc_html__('Unable to generate encounter summary', 'kc-lang'), 400));
+                        }
+
+                        $pdf_binary = $this->renderEncounterSummaryPdf($html);
+
+                        if (empty($pdf_binary)) {
+                                wp_send_json(kcThrowExceptionResponse(esc_html__('Unable to create PDF', 'kc-lang'), 400));
+                        }
+
+                        $data_url = 'data:application/pdf;base64,' . base64_encode($pdf_binary);
+
+                        wp_send_json([
+                                'status' => true,
+                                'message' => esc_html__('Encounter PDF generated', 'kc-lang'),
+                                'data' => [
+                                        'data_url' => $data_url,
+                                        'file_name' => 'Encounter_Summary_' . $encounter_id . '.pdf',
+                                ],
+                        ]);
+                } catch (Exception $e) {
+                        $code = $e->getCode();
+                        $message = $e->getMessage();
+
+                        header("Status: $code $message");
+
+                        wp_send_json([
+                                'status' => false,
+                                'message' => $message,
+                        ]);
+                }
+        }
+
+        public function sendEncounterSummary()
+        {
+                $request_data = $this->request->getInputs();
+
+                try {
+                        $encounter_id = 0;
+
+                        if (!empty($request_data['encounter_id'])) {
+                                $encounter_id = (int) $request_data['encounter_id'];
+                        } elseif (!empty($request_data['id'])) {
+                                $encounter_id = (int) $request_data['id'];
+                        }
+
+                        if (empty($encounter_id)) {
+                                wp_send_json(kcThrowExceptionResponse(esc_html__('Encounter id not found', 'kc-lang'), 400));
+                        }
+
+                        if (!((new KCPatientEncounter())->encounterPermissionUserWise($encounter_id))) {
+                                wp_send_json(kcUnauthorizeAccessResponse(403));
+                        }
+
+                        $summary = $this->buildEncounterSummaryData($encounter_id);
+
+                        if (empty($summary) || empty($summary['patient']['email'])) {
+                                wp_send_json(kcThrowExceptionResponse(esc_html__('Patient email not available', 'kc-lang'), 400));
+                        }
+
+                        $html = $this->generateEncounterSummaryHtml($encounter_id);
+
+                        if (empty($html)) {
+                                wp_send_json(kcThrowExceptionResponse(esc_html__('Unable to generate encounter summary', 'kc-lang'), 400));
+                        }
+
+                        $pdf_binary = $this->renderEncounterSummaryPdf($html);
+
+                        if (empty($pdf_binary)) {
+                                wp_send_json(kcThrowExceptionResponse(esc_html__('Unable to create PDF', 'kc-lang'), 400));
+                        }
+
+                        $upload_dir = wp_upload_dir();
+
+                        if (empty($upload_dir['path'])) {
+                                wp_send_json(kcThrowExceptionResponse(esc_html__('Upload directory not available', 'kc-lang'), 400));
+                        }
+
+                        $file_name = 'Encounter_Summary_' . $encounter_id . '.pdf';
+                        $pdf_path = trailingslashit($upload_dir['path']) . $file_name;
+
+                        file_put_contents($pdf_path, $pdf_binary);
+
+                        $patient_email = $summary['patient']['email'];
+                        $patient_name = !empty($summary['patient']['name']) ? $summary['patient']['name'] : '';
+                        $clinic_name = !empty($summary['appointment']['clinic_name']) ? $summary['appointment']['clinic_name'] : '';
+
+                        $subject = trim(sprintf('%s%s', 'Resumen de atención / Care Summary', !empty($clinic_name) ? ' - ' . $clinic_name : ''));
+
+                        $greeting = !empty($patient_name) ? sprintf('Hola %1$s, / Hello %1$s,', esc_html($patient_name)) : 'Hola, / Hello,';
+                        $body_content = 'Adjunto encontrarás el resumen de tu atención. / Please find attached the summary of your care.';
+                        $closing = 'Gracias por confiar en nosotros. / Thank you for trusting us.';
+
+                        $message = '<p>' . $greeting . '</p>';
+                        $message .= '<p>' . esc_html($body_content) . '</p>';
+                        $message .= '<p>' . esc_html($closing) . '</p>';
+
+                        $headers = ['Content-Type: text/html; charset=UTF-8'];
+
+                        $email_status = wp_mail($patient_email, $subject, $message, $headers, [$pdf_path]);
+
+                        if (file_exists($pdf_path)) {
+                                unlink($pdf_path);
+                        }
+
+                        if ($email_status) {
+                                wp_send_json([
+                                        'status' => true,
+                                        'message' => esc_html__('Encounter summary emailed successfully', 'kc-lang'),
+                                ]);
+                        }
+
+                        wp_send_json(kcThrowExceptionResponse(esc_html__('Failed to send encounter summary email', 'kc-lang'), 400));
+                } catch (Exception $e) {
+                        $code = $e->getCode();
+                        $message = $e->getMessage();
+
+                        header("Status: $code $message");
+
+                        wp_send_json([
+                                'status' => false,
+                                'message' => $message,
+                        ]);
+                }
+        }
+
+        private function buildEncounterSummaryData($encounter_id)
+        {
+                $patient_encounter_table = $this->db->prefix . 'kc_patient_encounters';
+                $clinics_table = $this->db->prefix . 'kc_clinics';
+                $users_table = $this->db->base_prefix . 'users';
+                $medical_history_table = $this->db->prefix . 'kc_medical_history';
+                $prescription_table = $this->db->prefix . 'kc_prescription';
+                $appointments_table = $this->db->prefix . 'kc_appointments';
+
+                $query = $this->db->prepare(
+                        "SELECT enc.*, \
+                       doctors.display_name  AS doctor_name,\
+                       doctors.user_email AS doctor_email,\
+                       patients.display_name AS patient_name,\
+                       patients.user_email AS patient_email,\
+                       clinics.name AS clinic_name,\
+                       clinics.telephone_no AS clinic_phone,\
+                       clinics.address AS clinic_address,\
+                       clinics.city AS clinic_city,\
+                       clinics.state AS clinic_state,\
+                       clinics.country AS clinic_country,\
+                       clinics.postal_code AS clinic_postal_code,\
+                       clinics.extra AS clinic_extra,\
+                       appointment.appointment_start_date,\
+                       appointment.appointment_start_time,\
+                       appointment.appointment_end_date,\
+                       appointment.appointment_end_time\
+                    FROM  {$patient_encounter_table} AS enc\
+                       LEFT JOIN {$users_table} AS doctors\
+                              ON enc.doctor_id = doctors.ID\
+                      LEFT JOIN {$users_table} AS patients\
+                              ON enc.patient_id = patients.ID\
+                       LEFT JOIN {$clinics_table} AS clinics\
+                              ON enc.clinic_id = clinics.id\
+                       LEFT JOIN {$appointments_table} AS appointment\
+                              ON appointment.id = enc.appointment_id\
+                    WHERE enc.id = %d LIMIT 1",
+                        $encounter_id
+                );
+
+                $encounter = $this->db->get_row($query);
+
+                if (empty($encounter)) {
+                        return null;
+                }
+
+                $patient_basic_data = json_decode(get_user_meta((int) $encounter->patient_id, 'basic_data', true));
+                $patient_basic_data = is_object($patient_basic_data) ? $patient_basic_data : new \stdClass();
+                $patient_user = get_userdata((int) $encounter->patient_id);
+                $patient_identifier = !empty($patient_user) ? $patient_user->user_login : '';
+
+                $country_code = get_user_meta((int) $encounter->patient_id, 'country_calling_code', true);
+                $patient_phone = '';
+                if (!empty($patient_basic_data->mobile_number)) {
+                        $patient_phone = (!empty($country_code) ? '+' . $country_code . ' ' : '') . $patient_basic_data->mobile_number;
+                }
+
+                $patient_address_parts = [];
+                foreach (['address', 'city', 'state', 'postal_code', 'country'] as $key) {
+                        if (!empty($patient_basic_data->$key)) {
+                                $patient_address_parts[] = $patient_basic_data->$key;
+                        }
+                }
+                $patient_address = !empty($patient_address_parts) ? implode(', ', $patient_address_parts) : '';
+
+                $patient_age = '';
+                $patient_dob = '';
+                if (!empty($patient_basic_data->dob)) {
+                        try {
+                                $dob = new DateTime($patient_basic_data->dob);
+                                $now = new DateTime(current_time('Y-m-d'));
+                                $diff = $dob->diff($now);
+                                $patient_age = $diff->y;
+                                $patient_dob = kcGetFormatedDate($patient_basic_data->dob);
+                        } catch (Exception $e) {
+                                $patient_age = '';
+                        }
+                }
+
+                $patient_gender = '';
+                if (!empty($patient_basic_data->gender)) {
+                        $patient_gender = ucfirst($patient_basic_data->gender);
+                }
+
+                $doctor_basic_data = json_decode(get_user_meta((int) $encounter->doctor_id, 'basic_data', true));
+                $doctor_basic_data = is_object($doctor_basic_data) ? $doctor_basic_data : new \stdClass();
+                $doctor_user = get_userdata((int) $encounter->doctor_id);
+                $doctor_identifier = !empty($doctor_user) ? $doctor_user->user_login : '';
+
+                $doctor_specialties = [];
+                if (!empty($doctor_basic_data->specialties) && is_array($doctor_basic_data->specialties)) {
+                        foreach ($doctor_basic_data->specialties as $specialty) {
+                                if (is_object($specialty) && !empty($specialty->label)) {
+                                        $doctor_specialties[] = $specialty->label;
+                                } elseif (is_array($specialty) && !empty($specialty['label'])) {
+                                        $doctor_specialties[] = $specialty['label'];
+                                }
+                        }
+                }
+
+                $doctor_qualifications = [];
+                if (!empty($doctor_basic_data->qualifications) && is_array($doctor_basic_data->qualifications)) {
+                        foreach ($doctor_basic_data->qualifications as $qualification) {
+                                if (is_object($qualification)) {
+                                        $qualification_text = [];
+                                        if (!empty($qualification->degree)) {
+                                                $qualification_text[] = $qualification->degree;
+                                        }
+                                        if (!empty($qualification->university)) {
+                                                $qualification_text[] = $qualification->university;
+                                        }
+                                        if (!empty($qualification_text)) {
+                                                $doctor_qualifications[] = implode(' - ', $qualification_text);
+                                        }
+                                } elseif (is_array($qualification)) {
+                                        $qualification_text = [];
+                                        if (!empty($qualification['degree'])) {
+                                                $qualification_text[] = $qualification['degree'];
+                                        }
+                                        if (!empty($qualification['university'])) {
+                                                $qualification_text[] = $qualification['university'];
+                                        }
+                                        if (!empty($qualification_text)) {
+                                                $doctor_qualifications[] = implode(' - ', $qualification_text);
+                                        }
+                                }
+                        }
+                }
+
+                $doctor_country_code = get_user_meta((int) $encounter->doctor_id, 'country_calling_code', true);
+                $doctor_phone = '';
+                if (!empty($doctor_basic_data->mobile_number)) {
+                        $doctor_phone = (!empty($doctor_country_code) ? '+' . $doctor_country_code . ' ' : '') . $doctor_basic_data->mobile_number;
+                }
+
+                $doctor_signature_id = get_user_meta((int) $encounter->doctor_id, 'doctor_signature', true);
+                $doctor_signature = !empty($doctor_signature_id) ? wp_get_attachment_url($doctor_signature_id) : '';
+
+                $clinic_address_parts = [];
+                foreach (['clinic_address', 'clinic_city', 'clinic_state', 'clinic_postal_code', 'clinic_country'] as $key) {
+                        if (!empty($encounter->$key)) {
+                                $clinic_address_parts[] = $encounter->$key;
+                        }
+                }
+                $clinic_address = !empty($clinic_address_parts) ? implode(', ', $clinic_address_parts) : '';
+
+                $medical_history_results = $this->db->get_results($this->db->prepare(
+                        "SELECT type, title FROM {$medical_history_table} WHERE encounter_id = %d",
+                        $encounter_id
+                ));
+
+                $medical_history = [];
+                if (!empty($medical_history_results)) {
+                        foreach ($medical_history_results as $history_item) {
+                                $type = !empty($history_item->type) ? $history_item->type : 'general';
+                                if (!array_key_exists($type, $medical_history)) {
+                                        $medical_history[$type] = [];
+                                }
+                                if (!empty($history_item->title)) {
+                                        $medical_history[$type][] = $history_item->title;
+                                }
+                        }
+                }
+
+                $prescription_results = $this->db->get_results($this->db->prepare(
+                        "SELECT name, frequency, duration, instruction FROM {$prescription_table} WHERE encounter_id = %d",
+                        $encounter_id
+                ));
+
+                $prescriptions = [];
+                $indicaciones = [];
+
+                if (!empty($prescription_results)) {
+                        foreach ($prescription_results as $prescription) {
+                                $prescriptions[] = [
+                                        'name' => !empty($prescription->name) ? $prescription->name : '',
+                                        'frequency' => !empty($prescription->frequency) ? $prescription->frequency : '',
+                                        'duration' => !empty($prescription->duration) ? $prescription->duration : '',
+                                        'instruction' => !empty($prescription->instruction) ? $prescription->instruction : '',
+                                ];
+
+                                if (!empty($prescription->instruction)) {
+                                        $indicaciones[] = $prescription->instruction;
+                                }
+                        }
+                }
+
+                $appointment_date = !empty($encounter->appointment_start_date)
+                        ? kcGetFormatedDate($encounter->appointment_start_date)
+                        : kcGetFormatedDate($encounter->encounter_date);
+
+                $appointment_time = !empty($encounter->appointment_start_time)
+                        ? kcGetFormatedTime($encounter->appointment_start_time)
+                        : '';
+
+                return [
+                        'encounter_id' => $encounter_id,
+                        'appointment' => [
+                                'date' => $appointment_date,
+                                'time' => $appointment_time,
+                                'clinic_name' => !empty($encounter->clinic_name) ? decodeSpecificSymbols($encounter->clinic_name) : '',
+                                'clinic_address' => $clinic_address,
+                                'clinic_phone' => !empty($encounter->clinic_phone) ? $encounter->clinic_phone : '',
+                                'status' => (int) $encounter->status,
+                        ],
+                        'patient' => [
+                                'name' => !empty($encounter->patient_name) ? $encounter->patient_name : '',
+                                'email' => !empty($encounter->patient_email) ? $encounter->patient_email : '',
+                                'phone' => $patient_phone,
+                                'address' => $patient_address,
+                                'gender' => $patient_gender,
+                                'age' => $patient_age,
+                                'dob' => $patient_dob,
+                                'identification' => $patient_identifier,
+                        ],
+                        'doctor' => [
+                                'name' => !empty($encounter->doctor_name) ? $encounter->doctor_name : '',
+                                'email' => !empty($encounter->doctor_email) ? $encounter->doctor_email : '',
+                                'phone' => $doctor_phone,
+                                'specialties' => $doctor_specialties,
+                                'qualifications' => $doctor_qualifications,
+                                'identification' => $doctor_identifier,
+                                'signature' => $doctor_signature,
+                        ],
+                        'summary' => [
+                                'description' => !empty($encounter->description) ? $encounter->description : '',
+                                'diagnosis' => !empty($medical_history['disease']) ? $medical_history['disease'] : [],
+                                'medical_orders' => !empty($medical_history['report']) ? $medical_history['report'] : [],
+                                'indications' => $indicaciones,
+                                'prescriptions' => $prescriptions,
+                                'medical_history' => $medical_history,
+                        ],
+                ];
+        }
+
+        private function generateEncounterSummaryHtml($encounter_id)
+        {
+                $response = apply_filters('kcpro_get_encounter_print', [
+                        'encounter_id' => (int) $encounter_id,
+                        'clinic_default_logo' => KIVI_CARE_DIR_URI . 'assets/images/kc-demo-img.png',
+                        'print_type' => 'encounter',
+                ]);
+
+                if (is_array($response) && !empty($response['data'])) {
+                        return $response['data'];
+                }
+
+                return '';
+        }
+
+        private function renderEncounterSummaryPdf($html)
+        {
+                if (empty($html)) {
+                        return '';
+                }
+
+                $dompdf = new Dompdf();
+                $dompdf->set_option('isHtml5ParserEnabled', true);
+                $dompdf->set_option('isPhpEnabled', true);
+                $dompdf->set_option('isRemoteEnabled', true);
+                $dompdf->loadHtml('<meta charset="UTF-8">' . $html);
+                $dompdf->setPaper('A4', 'portrait');
+                $dompdf->render();
+
+                return $dompdf->output();
+        }
 }
