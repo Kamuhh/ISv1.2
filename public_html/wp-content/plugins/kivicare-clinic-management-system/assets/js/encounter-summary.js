@@ -44,6 +44,7 @@
 
             this.injectStyles();
             this.createModal();
+            this.bindGlobalHandler();
             this.observeButton();
         },
 
@@ -93,10 +94,11 @@
                 icon.className = 'fa fa-file-alt';
             }
 
+            button.removeAttribute('onclick');
+            button.onclick = null;
+
             const onClick = (event) => {
-                event.preventDefault();
-                event.stopImmediatePropagation();
-                this.openModal();
+                this.handleButtonClick(event, button);
             };
 
             button.addEventListener('click', onClick, true);
@@ -107,6 +109,49 @@
             if (button && button.parentElement) {
                 button.parentElement.removeChild(button);
             }
+        },
+
+        bindGlobalHandler() {
+            if (this.globalClickHandler) {
+                return;
+            }
+
+            this.globalClickHandler = (event) => {
+                this.handleButtonClick(event);
+            };
+
+            document.addEventListener('click', this.globalClickHandler, true);
+        },
+
+        handleButtonClick(event, sourceButton) {
+            if (!event) {
+                return;
+            }
+
+            const button = sourceButton || (event.target ? event.target.closest('#kc-encounter-print') : null);
+            if (!button || this.role === 'kivicare_patient') {
+                return;
+            }
+
+            this.squelchLegacyHandlers(event);
+
+            if (button.dataset.kcEncounterSummary !== 'true') {
+                this.enhanceButton(button);
+            }
+
+            this.openModal();
+        },
+
+        squelchLegacyHandlers(event) {
+            event.preventDefault();
+            if (typeof event.stopImmediatePropagation === 'function') {
+                event.stopImmediatePropagation();
+            }
+            if (typeof event.stopPropagation === 'function') {
+                event.stopPropagation();
+            }
+            event.cancelBubble = true;
+            event.returnValue = false;
         },
 
         injectStyles() {
